@@ -1,0 +1,12 @@
+{
+  "name": "chatflux-cookie-refresh",
+  "version": "1.0.0",
+  "description": "Automatiza a renovação do cookie do ChatFlux",
+  "scripts": {
+    "get-cookie": "node scripts/get-cookie.js"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}
+
