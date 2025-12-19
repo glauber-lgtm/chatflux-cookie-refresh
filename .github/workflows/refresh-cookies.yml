@@ -1,0 +1,60 @@
+name: Atualizar Cookie do ChatFlux
+
+on:
+  schedule:
+    # Roda a cada 1 hora
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    # Permite rodar manualmente pelo GitHub UI
+
+env:
+  CHATFLUX_EMAIL: ${{ secrets.CHATFLUX_EMAIL }}
+  CHATFLUX_PASSWORD: ${{ secrets.CHATFLUX_PASSWORD }}
+
+jobs:
+  cookie-de-atualizacao:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configurar tarefa
+        uses: actions/checkout@v4
+
+      - name: Executar ações/setup-node@v4
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Instalar Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: 🔑 Faça login e ganhe um cookie
+        run: node scripts/get-cookie.js
+
+      - name: Verificar cookie gerado
+        run: |
+          if [ ! -f cookie.txt ]; then
+            echo "❌ cookie.txt não foi gerado"
+            exit 1
+          fi
+          echo "✅ Cookie gerado com $(wc -c < cookie.txt) bytes"
+
+      - name: ☁️ Atualize o segredo do Cloudflare Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm install -g wrangler
+          
+          echo "Atualizando CHATFLUX_COOKIE no Worker Convex..."
+          cat cookie.txt | wrangler secret put CHATFLUX_COOKIE --name chatflux-convex-sync
+          echo "✅ Worker Convex atualizado!"
+
+      - name: 🧹 Limpeza
+        if: always()
+        run: |
+          rm -f cookie.txt cookies.json error-screenshot.png
+          echo "🧹 Arquivos sensíveis removidos"
+
