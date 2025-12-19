@@ -6,30 +6,22 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 
-const CHATFLUX_URL = 'https://alpha.chatflux.ai';
-const WORKSPACE_ID = 'Dd8F3m';
+const LOGIN_URL = 'https://alpha.chatflux.ai/app/sign_in';
 
 async function getCookie() {
-  console.log('🚀 Iniciando browser...');
+  console.log('🚀 Iniciando o navegador...');
   
   const browser = await chromium.launch({
     headless: true,
   });
   
   const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   });
   
   const page = await context.newPage();
 
   try {
-    // 1. Ir para a página de login
-    console.log('📄 Acessando página de login...');
-    await page.goto(`${CHATFLUX_URL}/login`, { waitUntil: 'networkidle' });
-    
-    // 2. Preencher credenciais
-    console.log('🔑 Preenchendo credenciais...');
-    
     const email = process.env.CHATFLUX_EMAIL;
     const password = process.env.CHATFLUX_PASSWORD;
     
@@ -37,72 +29,72 @@ async function getCookie() {
       throw new Error('CHATFLUX_EMAIL e CHATFLUX_PASSWORD são obrigatórios!');
     }
     
-    // Aguardar campos de login aparecerem
-    await page.waitForSelector('input[type="email"], input[name="email"], input[placeholder*="email"]', { timeout: 10000 });
+    console.log('📧 Email configurado:', email.substring(0, 3) + '***' + email.substring(email.indexOf('@')));
+
+    // 1. Ir para a página de login
+    console.log('📄 Acessando página de login...');
+    await page.goto(LOGIN_URL, { waitUntil: 'networkidle' });
+    console.log('✅ Página carregada. URL:', page.url());
     
-    // Preencher email
-    const emailInput = await page.$('input[type="email"]') || 
-                       await page.$('input[name="email"]') || 
-                       await page.$('input[placeholder*="email"]');
-    if (emailInput) {
-      await emailInput.fill(email);
-    }
+    // 2. Preencher EMAIL (login em 2 etapas)
+    console.log('🔑Preenchendo credenciais...');
+    console.log('   Preenchendo email...');
+    await page.waitForSelector('#email_field', { timeout: 15000 });
+    await page.fill('#email_field', email);
     
-    // Preencher senha
-    const passwordInput = await page.$('input[type="password"]') || 
-                          await page.$('input[name="password"]');
-    if (passwordInput) {
-      await passwordInput.fill(password);
-    }
+    // Clicar no botão para avançar
+    console.log('   Avançando para próxima etapa...');
+    await page.click('input.btn-primary');
     
-    // 3. Clicar no botão de login
+    // 3. Aguardar campo de senha aparecer
+    console.log('   Aguardando campo de senha...');
+    await page.waitForSelector('input[type="password"]', { state: 'visible', timeout: 15000 });
+    console.log('   ✅ Campo de senha visível!');
+    
+    // 4. Preencher SENHA
+    console.log('   Preenchendo senha...');
+    await page.fill('input[type="password"]', password);
+    
+    // 5. Submeter login
     console.log('🔓 Fazendo login...');
+    await page.click('input.btn-primary');
     
-    const loginButton = await page.$('button[type="submit"]') ||
-                        await page.$('button:has-text("Login")') ||
-                        await page.$('button:has-text("Entrar")') ||
-                        await page.$('input[type="submit"]');
+    // 6. Aguardar login completar
+    console.log('⏳ Aguardando login...');
+    await page.waitForTimeout(5000);
     
-    if (loginButton) {
-      await loginButton.click();
+    const currentUrl = page.url();
+    console.log('📍 URL após login:', currentUrl);
+    
+    // Verificar se ainda está na página de login
+    if (currentUrl.includes('sign_in') || currentUrl.includes('login')) {
+      await page.screenshot({ path: 'error-screenshot.png' });
+      console.log('📸 Captura de tela salva em error-screenshot.png');
+      throw new Error('Login falhou - ainda na página de login');
     }
     
-    // 4. Aguardar redirecionamento após login
-    console.log('⏳ Aguardando login...');
-    await page.waitForURL(`**/${WORKSPACE_ID}/**`, { timeout: 30000 }).catch(() => {
-      // Se não redirecionar para workspace, tentar aguardar qualquer mudança de URL
-      return page.waitForNavigation({ timeout: 30000 });
-    });
-    
-    // 5. Aguardar um pouco para cookies serem setados
-    await page.waitForTimeout(3000);
-    
-    // 6. Obter cookies
+    // 7. Obter cookies
     console.log('🍪 Obtendo cookies...');
     const cookies = await context.cookies();
     
-    // Procurar o cookie de sessão
-    const sessionCookie = cookies.find(c => c.name === '_chatflux_app_session');
+    // Formatar como string
+    const cookieString = cookies
+      .map(c => `${c.name}=${c.value}`)
+      .join('; ');
     
+    // Verificar cookies importantes
+    const sessionCookie = cookies.find(c => c.name === '_chatflux_app_session');
     if (!sessionCookie) {
-      console.log('Cookies disponíveis:', cookies.map(c => c.name));
+      console.log('⚠️ Cookies disponíveis:', cookies.map(c => c.name).join(', '));
       throw new Error('Cookie _chatflux_app_session não encontrado!');
     }
-    
-    // Formatar cookie
-    const cookieString = `_chatflux_app_session=${sessionCookie.value}`;
     
     console.log('✅ Cookie obtido com sucesso!');
     console.log(`📏 Tamanho: ${cookieString.length} caracteres`);
     
-    // Salvar em arquivo para o próximo step
+    // Salvar em arquivo
     fs.writeFileSync('cookie.txt', cookieString);
-    
-    // Também exportar como output do GitHub Actions
-    const outputFile = process.env.GITHUB_OUTPUT;
-    if (outputFile) {
-      fs.appendFileSync(outputFile, `cookie=${cookieString}\n`);
-    }
+    console.log('💾 Cookie salvo em cookie.txt');
     
     return cookieString;
     
@@ -110,8 +102,12 @@ async function getCookie() {
     console.error('❌ Erro:', error.message);
     
     // Tirar screenshot para debug
-    await page.screenshot({ path: 'error-screenshot.png' });
-    console.log('📸 Screenshot salvo em error-screenshot.png');
+    try {
+      await page.screenshot({ path: 'error-screenshot.png' });
+      console.log('📸 Captura de tela salva em error-screenshot.png');
+    } catch (e) {
+      console.log('   Não foi possível salvar screenshot');
+    }
     
     throw error;
     
@@ -127,7 +123,6 @@ getCookie()
     process.exit(0);
   })
   .catch((error) => {
-    console.error('💥 Falha:', error);
+    console.error('💥 Falha:', error.message);
     process.exit(1);
   });
-
