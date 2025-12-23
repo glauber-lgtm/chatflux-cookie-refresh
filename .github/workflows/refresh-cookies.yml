@@ -2,8 +2,8 @@ name: Atualizar Cookie do ChatFlux
 
 on:
   schedule:
-    # Roda a cada 1 hora
-    - cron: '0 * * * *'
+    # Roda a cada 4 horas
+    - cron: '0 */4 * * *'
   workflow_dispatch:
     # Permite rodar manualmente pelo GitHub UI
 
@@ -57,4 +57,8 @@ jobs:
         run: |
           rm -f cookie.txt cookies.json error-screenshot.png
           echo "🧹 Arquivos sensíveis removidos"
+
+
+
+
 
